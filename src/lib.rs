@@ -8,7 +8,15 @@ mod builder;
 pub use builder::{BuilderWithBits, BuilderWithFalsePositiveRate};
 mod bit_vector;
 use bit_vector::BlockedBitVec;
+mod generational;
+pub use generational::GenerationalBloomFilter;
+
+mod generational_builder;
+pub use generational_builder::{
+    GenerationalBuilderWithBits, GenerationalBuilderWithFalsePositiveRate,
+};
 mod sparse_hash;
+
 use sparse_hash::SparseHash;
 use wide::{u64x2, u64x4};
 
@@ -26,7 +34,7 @@ use wide::{u64x2, u64x4};
 /// # Examples
 /// Basic usage:
 /// ```rust
-/// use fastbloom::BloomFilter;
+/// use generational_bloom::BloomFilter;
 ///
 /// let mut filter = BloomFilter::with_num_bits(1024).expected_items(2);
 /// filter.insert("42");
@@ -34,7 +42,7 @@ use wide::{u64x2, u64x4};
 /// ```
 /// Instantiate with a target false positive rate:
 /// ```rust
-/// use fastbloom::BloomFilter;
+/// use generational_bloom::BloomFilter;
 ///
 /// let filter = BloomFilter::with_false_pos(0.001).items(["42", "🦀"]);
 /// assert!(filter.contains("42"));
@@ -42,7 +50,7 @@ use wide::{u64x2, u64x4};
 /// ```
 /// Use any hasher:
 /// ```rust
-/// use fastbloom::BloomFilter;
+/// use generational_bloom::BloomFilter;
 /// use ahash::RandomState;
 ///
 /// let filter = BloomFilter::with_num_bits(1024)
@@ -104,7 +112,7 @@ impl BloomFilter {
     ///
     /// # Examples
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     /// let bloom = BloomFilter::with_false_pos(0.001).expected_items(1000);
     /// ```
     pub fn with_false_pos(fp: f64) -> BuilderWithFalsePositiveRate<512> {
@@ -117,7 +125,7 @@ impl BloomFilter {
     ///
     /// # Examples
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     /// let bloom = BloomFilter::with_num_bits(1024).hashes(4);
     /// ```
     pub fn with_num_bits(num_bits: usize) -> BuilderWithBits<512> {
@@ -132,7 +140,7 @@ impl BloomFilter {
     /// Panics if the bit vector, `bit_vec`, is empty.
     /// # Examples
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     ///
     /// let orig = BloomFilter::with_false_pos(0.001).seed(&42).items([1, 2]);
     /// let num_hashes = orig.num_hashes();
@@ -196,7 +204,7 @@ impl<const BLOCK_SIZE_BITS: usize, S: BuildHasher> BloomFilter<BLOCK_SIZE_BITS, 
     ///
     /// # Examples
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     ///
     /// let mut bloom = BloomFilter::with_num_bits(1024).hashes(4);
     /// bloom.insert(&2);
@@ -265,7 +273,7 @@ impl<const BLOCK_SIZE_BITS: usize, S: BuildHasher> BloomFilter<BLOCK_SIZE_BITS, 
     /// # Examples
     ///
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     ///
     /// let bloom = BloomFilter::with_num_bits(1024).items([1, 2, 3]);
     /// assert!(bloom.contains(&1));
@@ -335,7 +343,7 @@ impl<const BLOCK_SIZE_BITS: usize, S: BuildHasher> BloomFilter<BLOCK_SIZE_BITS, 
     /// # Examples
     ///
     /// ```
-    /// use fastbloom::BloomFilter;
+    /// use generational_bloom::BloomFilter;
     ///
     /// let data = vec![0x517cc1b727220a95; 8];
     /// let bloom = BloomFilter::<512>::from_vec(data.clone()).hashes(4);
@@ -782,11 +790,7 @@ mod tests {
                     .hasher(H::seeded(&[42; 16]))
                     .hashes(num_hashes);
                 let mut rng = StdRng::seed_from_u64(42);
-                test_with_distr_fn(
-                    |_| rng.random_range(0..usize::MAX),
-                    &clone_me,
-                    thresh_pct,
-                );
+                test_with_distr_fn(|_| rng.random_range(0..usize::MAX), &clone_me, thresh_pct);
                 test_with_distr_fn(|x| x * 2, &clone_me, thresh_pct);
                 test_with_distr_fn(|x| x * 3, &clone_me, thresh_pct);
                 test_with_distr_fn(
@@ -794,11 +798,7 @@ mod tests {
                     &clone_me,
                     thresh_pct,
                 );
-                test_with_distr_fn(
-                    |x| x * clone_me.num_blocks(),
-                    &clone_me,
-                    thresh_pct,
-                );
+                test_with_distr_fn(|x| x * clone_me.num_blocks(), &clone_me, thresh_pct);
                 test_with_distr_fn(|x| x * N, &clone_me, thresh_pct);
             }
         }
